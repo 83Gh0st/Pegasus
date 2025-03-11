@@ -1,7 +1,7 @@
 
 # Pegasus | AI-Powered PPE Detection System 🚧👷‍♂️  
 
-[!predicyion result](https://github.com/83Gh0st/Pegasus/blob/main/predictions/Model/val_batch0_labels.jpg?raw=true)
+![predicyion result](https://github.com/83Gh0st/Pegasus/blob/main/predictions/Model/val_batch0_labels.jpg?raw=true)
 
 ## **Overview**  
 Pegasus is a deep learning-based **Personal Protective Equipment (PPE) detection** system designed for **smart workplace safety monitoring**. Using **YOLOv5**, it can detect **boots, helmets, gloves, vests, and personnel** in real-time across **various deployment environments**, such as **CCTV, drones, edge devices, and cloud servers**.  
