@@ -80,10 +80,6 @@ cv2.destroyAllWindows()
 ## **📊 Model Performance & Results**  
 ![results](https://github.com/83Gh0st/Pegasus/blob/main/predictions/Model/results.png?raw=true)
 
-✅ **mAP (Mean Average Precision):** **91.2%**  
-✅ **Precision:** **93.5%**  
-✅ **Recall:** **88.7%**  
-
 📈 **Training Metrics (Loss, Accuracy, Confusion Matrix) are available in the `results/` folder.**  
 
 ---
@@ -121,9 +117,6 @@ cd Pegasus
 ```
 
 ### **2️⃣ Install Dependencies**  
-```bash
-pip install -r requirements.txt
-```
 
 ### **3️⃣ Run Object Detection**  
 
