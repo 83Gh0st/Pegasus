@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eagle Eyes - Smart PPE Detection</title>
+
+    <!-- TensorFlow.js & ONNX Runtime -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+    <style>
+        body { 
+            text-align: center; 
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        video, canvas { 
+            border: 2px solid black; 
+            margin: 10px; 
+            max-width: 100%;
+        }
+        #output { 
+            font-size: 18px; 
+            font-weight: bold;
+            margin: 15px 0;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+        }
+        .controls {
+            margin: 15px 0;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 0 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+        #file-upload {
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+        }
+        #model-status {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🦺 Pegasus - AI-Powered PPE Detection</h1>
+    <p>Smart Construction Safety Monitoring System</p>
+
+    <div id="status">
+        <p id="model-status">Model: Not loaded</p>
+        <p>CORS-friendly local file upload for model</p>
+    </div>
+
+    <div id="file-upload">
+        <p>Upload your ONNX model file:</p>
+        <input type="file" id="model-upload" accept=".onnx">
+    </div>
+
+    <video id="webcam" width="640" height="480" autoplay playsinline></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+
+    <div class="controls">
+        <button onclick="startDetection()" id="start-btn" disabled>Start Detection</button>
+        <button onclick="stopDetection()">Stop Detection</button>
+        <button onclick="toggleConfidenceThreshold()">Toggle Confidence: <span id="threshold">0.5</span></button>
+    </div>
+
+    <p id="output">Waiting for model upload...</p>
+
+    <div class="legend" id="legend-container">
+        <!-- Legend will be created dynamically -->
+    </div>
+
+    <script>
+        let model, video, canvas, ctx;
+        let detectionRunning = false;
+        let confidenceThreshold = 0.5;
+        const thresholdLevels = [0.3, 0.5, 0.7, 0.9];
+        let currentThresholdIndex = 1;
+        
+        // Full class list from your configuration
+        const classNames = [
+            'hat', 'vest', 'no hat', 'no vest', 'Glass', 'Gloves', 
+            'Goggles', 'Helmet', 'No-Helmet', 'No-Vest', 'Person', 
+            'Safety-Boot', 'Safety-Vest', 'Vest', 'helmet', 'no helmet', 
+            'no vest', 'no_helmet', 'no_vest', 'protective_suit', 'worker'
+        ];
+
+        // Color map for different classes
+        const colorMap = {
+            // PPE Present (Good) - Greens and Blues
+            'hat': 'limegreen',
+            'vest': 'mediumseagreen',
+            'no hat': 'teal',
+            'no vest': 'lightseagreen',
+            'Glass': 'cadetblue',
+            'Glowes': 'dodgerblue',
+            'Goggles': 'royalblue',
+            'Helmet': 'green',
+            'No-Helmet': 'forestgreen',
+            'No-Vest': 'seagreen',
+            'Person': 'steelblue',
+            
+            // PPE Missing (Bad) - Reds and Oranges
+            'Safety-Boot': 'red',
+            'Saftey-Vest': 'crimson',
+            'Vest': 'firebrick',
+            'helmet': 'orangered',
+            'no helmet': 'tomato',
+            'no vest': 'darkorange',
+            'protective_suit': 'coral',
+            'worker': 'salmon',
+            
+
+        };
+
+        // Initialize document elements
+        document.addEventListener("DOMContentLoaded", function() {
+            // Setup model upload handler
+            document.getElementById('model-upload').addEventListener('change', handleModelUpload);
+            
+            // Setup webcam
+            setupWebcam();
+            
+            // Create legend
+            createLegend();
+        });
+
+        function createLegend() {
+            const legendContainer = document.getElementById('legend-container');
+            
+            // Group classes into categories for better organization
+            const categories = {
+                "PPE Present": classNames.filter(name => !name.toLowerCase().includes('no')),
+                "PPE Missing": classNames.filter(name => name.toLowerCase().includes('no')),
+            };
+            
+            for (const [category, classes] of Object.entries(categories)) {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.style.margin = '10px';
+                categoryDiv.style.display = 'inline-block';
+                categoryDiv.style.verticalAlign = 'top';
+                
+                const categoryTitle = document.createElement('h3');
+                categoryTitle.textContent = category;
+                categoryDiv.appendChild(categoryTitle);
+                
+                for (const className of classes) {
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    
+                    const colorBox = document.createElement('div');
+                    colorBox.className = 'legend-color';
+                    colorBox.style.backgroundColor = colorMap[className] || 'gray';
+                    
+                    const label = document.createElement('span');
+                    label.textContent = className;
+                    
+                    legendItem.appendChild(colorBox);
+                    legendItem.appendChild(label);
+                    categoryDiv.appendChild(legendItem);
+                }
+                
+                legendContainer.appendChild(categoryDiv);
+            }
+        }
+
+        // Handle local model file upload (CORS-friendly approach)
+        async function handleModelUpload(event) {
+            const modelFile = event.target.files[0];
+            if (!modelFile) return;
+            
+            try {
+                document.getElementById('model-status').innerText = "Model: Loading...";
+                
+                // Read the file as an ArrayBuffer
+                const arrayBuffer = await modelFile.arrayBuffer();
+                
+                // Load model from the ArrayBuffer
+                model = await ort.InferenceSession.create(arrayBuffer);
+                
+                document.getElementById('model-status').innerText = "Model: ✅ Loaded successfully";
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('output').innerText = "Model loaded! Click Start Detection.";
+                
+                console.log("✅ ONNX Model Loaded from local file!");
+                console.log("Model input names:", model.inputNames);
+                console.log("Model output names:", model.outputNames);
+            } catch (error) {
+                console.error("❌ Error loading ONNX model:", error);
+                document.getElementById('model-status').innerText = "Model: ❌ Failed to load";
+                document.getElementById('output').innerText = "Error loading model. Check console for details.";
+            }
+        }
+
+        async function setupWebcam() {
+            video = document.getElementById('webcam');
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("❌ Webcam not supported in this browser.");
+                document.getElementById('output').innerText = "Webcam not supported in this browser.";
+                return;
+            }
+
+            try {
+                console.log("📢 Setting up webcam...");
+                
+                // Start with low-res camera for better compatibility
+                const constraints = { 
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 }
+                    } 
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                console.log("✅ Webcam Access Granted!");
+            } catch (err) {
+                console.error("❌ Webcam access error:", err);
+                
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    document.getElementById('output').innerText = "Camera access denied. Please allow access and reload.";
+                } else if (err.name === 'NotFoundError') {
+                    document.getElementById('output').innerText = "No camera detected on your device.";
+                } else {
+                    document.getElementById('output').innerText = `Camera error: ${err.message}`;
+                }
+            }
+        }
+
+        function toggleConfidenceThreshold() {
+            currentThresholdIndex = (currentThresholdIndex + 1) % thresholdLevels.length;
+            confidenceThreshold = thresholdLevels[currentThresholdIndex];
+            document.getElementById('threshold').innerText = confidenceThreshold;
+        }
+
+        async function runDetection() {
+            if (!model) {
+                alert("❌ Model not loaded! Please upload a model file first.");
+                return;
+            }
+
+            detectionRunning = true;
+
+            async function detectFrame() {
+                if (!detectionRunning) return;
+
+                // Make sure video is ready
+                if (video.readyState !== 4) {
+                    requestAnimationFrame(detectFrame);
+                    return;
+                }
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                try {
+                    // Process image
+                    let imgTensor = tf.browser.fromPixels(video)
+                        .resizeBilinear([640, 640])
+                        .toFloat()
+                        .div(tf.scalar(255))  // Normalize pixel values
+                        .expandDims(0); // [1, 640, 640, 3]
+
+                    // Convert NHWC → NCHW for ONNX format
+                    imgTensor = imgTensor.transpose([0, 3, 1, 2]);
+
+                    // Convert to tensor format required by ONNX
+                    const float32Array = new Float32Array(imgTensor.dataSync());
+                    const tensor = new ort.Tensor("float32", float32Array, [1, 3, 640, 640]);
+
+                    // Run inference
+                    const results = await model.run({ [model.inputNames[0]]: tensor });
+                    const outputData = results[model.outputNames[0]];
+                    
+                    // Handle results
+                    if (outputData && outputData.data) {
+                        parsePredictions(outputData.data);
+                    }
+                    
+                    // Clean up tensors to prevent memory leaks
+                    tf.dispose(imgTensor);
+                } catch (error) {
+                    console.error("❌ Error during inference:", error);
+                    document.getElementById('output').innerText = "Detection error. See console for details.";
+                }
+
+                // Continue detection loop
+                if (detectionRunning) {
+                    requestAnimationFrame(detectFrame);
+                }
+            }
+
+            detectFrame();
+        }
+
+        function parsePredictions(output) {
+            if (!output || output.length === 0) {
+                console.error("❌ No valid predictions received.");
+                return;
+            }
+
+            const boxes = [];
+            const scores = [];
+            const classIndices = [];
+            const numClasses = classNames.length;
+            
+            try {
+                // Debug output structure
+                if (output.length < 20) {
+                    console.log("Full output:", Array.from(output));
+                } else {
+                    console.log("Output sample:", Array.from(output.slice(0, 20)));
+                    console.log("Output shape:", output.length);
+                }
+                
+                // Determine output format based on dimensions
+                // YOLOv5 typically outputs in one of these formats:
+                
+                // 1. Format: [x1, y1, x2, y2, conf, class_id, x1, y1, ...]
+                if (output.length % 6 === 0) {
+                    for (let i = 0; i < output.length; i += 6) {
+                        const x1 = output[i];
+                        const y1 = output[i + 1];
+                        const x2 = output[i + 2];
+                        const y2 = output[i + 3];
+                        const confidence = output[i + 4];
+                        const classId = Math.round(output[i + 5]);
+                        
+                        if (confidence > confidenceThreshold && classId < numClasses) {
+                            // Convert to center format
+                            const x = (x1 + x2) / 2;
+                            const y = (y1 + y2) / 2;
+                            const w = x2 - x1;
+                            const h = y2 - y1;
+                            
+                            boxes.push([x, y, w, h]);
+                            scores.push(confidence);
+                            classIndices.push(classId);
+                        }
+                    }
+                }
+                // 2. Format: [batch_id, x, y, w, h, conf, class_id, ...]
+                else if (output.length % 7 === 0) {
+                    for (let i = 0; i < output.length; i += 7) {
+                        const x = output[i + 1];
+                        const y = output[i + 2];
+                        const w = output[i + 3];
+                        const h = output[i + 4];
+                        const confidence = output[i + 5];
+                        const classId = Math.round(output[i + 6]);
+                        
+                        if (confidence > confidenceThreshold && classId < numClasses) {
+                            boxes.push([x, y, w, h]);
+                            scores.push(confidence);
+                            classIndices.push(classId);
+                        }
+                    }
+                }
+                // 3. Format: [x, y, w, h, conf, class0_score, class1_score, ...]
+                else {
+                    for (let i = 0; i < output.length; i += (5 + numClasses)) {
+                        if (i + 5 + numClasses <= output.length) {
+                            const x = output[i];
+                            const y = output[i + 1];
+                            const w = output[i + 2];
+                            const h = output[i + 3];
+                            const confidence = output[i + 4];
+                            
+                            // Get class scores and find max
+                            const classScores = output.slice(i + 5, i + 5 + numClasses);
+                            const maxClassScore = Math.max(...classScores);
+                            const classId = classScores.indexOf(maxClassScore);
+                            
+                            if (confidence > confidenceThreshold) {
+                                boxes.push([x, y, w, h]);
+                                scores.push(confidence);
+                                classIndices.push(classId);
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`Found ${boxes.length} objects above threshold ${confidenceThreshold}`);
+                
+                if (boxes.length > 0) {
+                    drawBoundingBoxes(boxes, scores, classIndices);
+                    updateSafetyStatus(classIndices);
+                } else {
+                    // Clear any previous boxes
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    document.getElementById('output').innerText = "No detections found";
+                }
+            } catch (error) {
+                console.error("Error parsing predictions:", error);
+                document.getElementById('output').innerText = "Error processing detections";
+            }
+        }
+
+     function drawBoundingBoxes(boxes, scores, classIndices) {
+    // Clear the canvas and redraw the video frame
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < boxes.length; i++) {
+        let [x, y, width, height] = boxes[i];
+        const confidence = scores[i];
+        const classId = classIndices[i];
+        const label = classNames[classId] || `Class ${classId}`;
+        
+        // Determine color based on class
+        const color = colorMap[label] || 'white';
+
+        // Convert normalized coordinates to pixel values
+        // Ensure we're using the correct origin (top-left of box)
+        const left = (x - width/2) * canvas.width;
+        const top = (y - height/2) * canvas.height;
+        const scaledWidth = width * canvas.width;
+        const scaledHeight = height * canvas.height;
+
+        // Draw box with thinner lines (2px) to match the reference image
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(left, top, scaledWidth, scaledHeight);
+
+        // Create label text (just the class name without confidence)
+        const labelText = label;
+        
+        // Set font properties similar to reference image
+        const fontSize = Math.max(12, Math.min(16, scaledWidth / 8));
+        ctx.font = `bold ${fontSize}px Arial`;
+        
+        // Measure text for background
+        const textMetrics = ctx.measureText(labelText);
+        const textWidth = textMetrics.width;
+        
+        // Draw label background directly on top of the bounding box
+        // with some transparency to match reference image
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.7; // Set transparency
+        ctx.fillRect(left, top, textWidth + 10, fontSize + 4);
+        
+        // Reset transparency for text
+        ctx.globalAlpha = 1.0;
+        
+        // Draw label text in white
+        ctx.fillStyle = "white";
+        ctx.fillText(labelText, left + 5, top + fontSize);
+    }
+}
+
+// Update parsePredictions function to better handle multiple detections
+function parsePredictions(output) {
+    if (!output || output.length === 0) {
+        console.error("❌ No valid predictions received.");
+        return;
+    }
+
+    const boxes = [];
+    const scores = [];
+    const classIndices = [];
+    const numClasses = classNames.length;
+    
+    try {
+        // Format detection based on model output format
+        // Most YOLO models output in one of these formats:
+        // 1. Format: [x1, y1, x2, y2, conf, class_id, x1, y1, ...]
+        if (output.length % 6 === 0) {
+            for (let i = 0; i < output.length; i += 6) {
+                const x1 = output[i];
+                const y1 = output[i + 1];
+                const x2 = output[i + 2];
+                const y2 = output[i + 3];
+                const confidence = output[i + 4];
+                const classId = Math.round(output[i + 5]);
+                
+                if (confidence > confidenceThreshold && classId < numClasses) {
+                    // Convert to center format
+                    const x = (x1 + x2) / 2;
+                    const y = (y1 + y2) / 2;
+                    const w = x2 - x1;
+                    const h = y2 - y1;
+                    
+                    boxes.push([x, y, w, h]);
+                    scores.push(confidence);
+                    classIndices.push(classId);
+                }
+            }
+        }
+        // 2. Format: [batch_id, x, y, w, h, conf, class_id, ...]
+        else if (output.length % 7 === 0) {
+            for (let i = 0; i < output.length; i += 7) {
+                const x = output[i + 1];
+                const y = output[i + 2];
+                const w = output[i + 3];
+                const h = output[i + 4];
+                const confidence = output[i + 5];
+                const classId = Math.round(output[i + 6]);
+                
+                if (confidence > confidenceThreshold && classId < numClasses) {
+                    boxes.push([x, y, w, h]);
+                    scores.push(confidence);
+                    classIndices.push(classId);
+                }
+            }
+        }
+        // 3. Format: [x, y, w, h, conf, class0_score, class1_score, ...]
+        else {
+            for (let i = 0; i < output.length; i += (5 + numClasses)) {
+                if (i + 5 + numClasses <= output.length) {
+                    const x = output[i];
+                    const y = output[i + 1];
+                    const w = output[i + 2];
+                    const h = output[i + 3];
+                    const confidence = output[i + 4];
+                    
+                    // Get class scores and find max
+                    const classScores = output.slice(i + 5, i + 5 + numClasses);
+                    const maxClassScore = Math.max(...classScores);
+                    const classId = classScores.indexOf(maxClassScore);
+                    
+                    if (confidence > confidenceThreshold) {
+                        boxes.push([x, y, w, h]);
+                        scores.push(confidence);
+                        classIndices.push(classId);
+                    }
+                }
+            }
+        }
+        
+        console.log(`Found ${boxes.length} objects above threshold ${confidenceThreshold}`);
+        
+        if (boxes.length > 0) {
+            drawBoundingBoxes(boxes, scores, classIndices);
+            updateSafetyStatus(classIndices);
+        } else {
+            // Clear any previous boxes
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            document.getElementById('output').innerText = "No detections found";
+        }
+    } catch (error) {
+        console.error("Error parsing predictions:", error);
+        document.getElementById('output').innerText = "Error processing detections";
+    }
+}
+
+        function updateSafetyStatus(classIndices) {
+            const output = document.getElementById('output');
+            
+            // Count PPE violations
+            const violations = classIndices.filter(idx => {
+                const className = classNames[idx]?.toLowerCase() || '';
+                return className.includes('no ') || 
+                       className.includes('no-') ||
+                       className.includes('no_');
+            }).length;
+            
+            // Count people/workers
+            const people = classIndices.filter(idx => {
+                const className = classNames[idx]?.toLowerCase() || '';
+                return className === 'person' || className === 'worker';
+            }).length;
+            
+            if (violations > 0) {
+                output.style.color = "red";
+                output.innerText = `⚠️ SAFETY ALERT: ${violations} PPE violations detected!`;
+            } else if (people > 0) {
+                output.style.color = "green";
+                output.innerText = `✅ SAFE: All workers properly equipped`;
+            } else {
+                output.style.color = "black";
+                output.innerText = `No workers detected`;
+            }
+        }
+
+        function startDetection() {
+            detectionRunning = true;
+            document.getElementById('output').innerText = "Starting detection...";
+            runDetection();
+        }
+
+        function stopDetection() {
+            detectionRunning = false;
+            document.getElementById('output').innerText = "Detection Stopped";
+        }
+    </script>
+
+</body>
+</html>

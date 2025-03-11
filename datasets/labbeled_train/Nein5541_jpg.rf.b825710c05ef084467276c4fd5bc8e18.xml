@@ -1,0 +1,27 @@
+<annotation>
+	<folder></folder>
+	<filename>Nein5541_jpg.rf.b825710c05ef084467276c4fd5bc8e18.jpg</filename>
+	<path>Nein5541_jpg.rf.b825710c05ef084467276c4fd5bc8e18.jpg</path>
+	<source>
+		<database>roboflow.com</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>vest</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<occluded>0</occluded>
+		<bndbox>
+			<xmin>1</xmin>
+			<xmax>595</xmax>
+			<ymin>1</ymin>
+			<ymax>641</ymax>
+		</bndbox>
+	</object>
+</annotation>
