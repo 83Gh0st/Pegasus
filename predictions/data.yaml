@@ -1,0 +1,30 @@
+train: /content/drive/MyDrive/ppe_smart_construction/yolov5/datasets/train
+val: /content/drive/MyDrive/ppe_smart_construction/yolov5/datasets/train
+test: /content/drive/MyDrive/ppe_smart_construction/yolov5/datasets/test
+
+nc: 20  # Update this to match the total number of classes
+
+names: [
+      'hat',
+      'vest',
+      'no hat',
+      'no vest',
+      'Glass',
+      'Gloves',
+      'Goggles',
+      'Helmet',
+      'No-Helmet',
+      'No-Vest',
+      'Person',
+      'Safety-Boot',
+      'Safety-Vest',
+      'Vest',
+      'helmet',
+      'no helmet',
+      'no vest',
+      'no_helmet',
+      'no_vest',
+      'protective_suit',
+      'worker'
+]
+

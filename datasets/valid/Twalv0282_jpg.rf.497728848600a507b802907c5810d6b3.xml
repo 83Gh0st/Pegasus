@@ -1,0 +1,27 @@
+<annotation>
+	<folder></folder>
+	<filename>Twalv0282_jpg.rf.497728848600a507b802907c5810d6b3.jpg</filename>
+	<path>Twalv0282_jpg.rf.497728848600a507b802907c5810d6b3.jpg</path>
+	<source>
+		<database>roboflow.com</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>vest</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<occluded>0</occluded>
+		<bndbox>
+			<xmin>3</xmin>
+			<xmax>160</xmax>
+			<ymin>181</ymin>
+			<ymax>344</ymax>
+		</bndbox>
+	</object>
+</annotation>
